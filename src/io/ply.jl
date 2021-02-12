@@ -1,3 +1,29 @@
+#=
+From http://paulbourke.net/dataformats/ply/
+
+name        type        number of bytes
+---------------------------------------
+char       character                 1
+uchar      unsigned character        1
+short      short integer             2
+ushort     unsigned short integer    2
+int        integer                   4
+uint       unsigned integer          4
+float      single-precision float    4
+double     double-precision float    8
+=#
+typemap = Dict(
+    Char => "char",
+    UInt8 => "uchar",
+    Int16 => "short",
+    UInt16 => "ushort",
+    Int32 => "int",
+    Int32 => "uint",
+    Float32 => "float",
+    Float64 => "double",
+)
+
+
 function save(f::Stream{format"PLY_BINARY"}, msh::AbstractMesh)
     io = stream(f)
     points = decompose(Point{3, Float32}, msh)
@@ -33,18 +59,36 @@ function save(f::Stream{format"PLY_ASCII"}, msh::AbstractMesh)
     n_faces = length(points)
     n_points = length(meshfaces)
 
+    point_type = eltype(points)
+    if point_type <: PointMeta
+        metafields = point_type.parameters[4]
+        metatypes = point_type.parameters[5].parameters
+    else
+        metafields = []
+        metatypes = []
+    end
+
     # write the header
     write(io, "ply\n")
     write(io, "format ascii 1.0\n")
     write(io, "element vertex $n_faces\n")
     write(io, "property float x\nproperty float y\nproperty float z\n")
+    for (metafield, metatype) in zip(metafields, metatypes)
+        type = typemap[metatype]
+        write(io, "property $type $metafield\n")
+    end
     write(io, "element face $n_points\n")
     write(io, "property list uchar int vertex_index\n")
     write(io, "end_header\n")
 
     # write the vertices and faces
     for v in points
-        println(io, join(Point{3, Float32}(v), " "))
+        metavals = map(f -> getproperty(v, f), metafields)
+        print(io, join(Point{3, Float32}(v), " "))
+        print(io, " ")
+        print(io, join(metavals, " "))
+        print(io, "\n")
+
     end
     for f in meshfaces
         println(io, length(f), " ", join(raw.(ZeroIndex.(f)), " "))
